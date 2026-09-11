@@ -6,6 +6,7 @@ import requests
 from mcp.server.fastmcp import FastMCP
 
 from . import saved_searches as ss
+from . import saved_hunts as sh
 from .api import REQUEST_HEADERS, REQUEST_TIMEOUT, SearchError, build_search_params, search
 from .category_fetcher import get_categories
 from .formatting import format_listing
@@ -412,6 +413,139 @@ def get_category_filters(
         "category": subcategory or category,
         "filters": filters,
         "usage": "Pass selected ids via 'attribute_ids' on search_listings.",
+    }
+
+
+@mcp.tool()
+def save_hunt(
+    name: str,
+    searches: list[dict[str, Any]],
+    per_search_limit: int = 10,
+) -> dict[str, Any]:
+    """Save a reusable named hunt locally."""
+    name = name.strip()
+
+    if not name:
+        return {"error": "Provide a hunt name."}
+
+    if not searches:
+        return {"error": "Provide at least one search."}
+
+    if len(searches) > HUNT_MAX_SEARCHES:
+        return {
+            "error": (
+                f"Too many searches: {len(searches)}. "
+                f"Maximum is {HUNT_MAX_SEARCHES}."
+            )
+        }
+
+    for index, spec in enumerate(searches, start=1):
+        if not isinstance(spec, dict):
+            return {
+                "error": f"Search {index} must be an object/dict."
+            }
+
+        unknown = sorted(
+            set(spec) - HUNT_ALLOWED_PARAMS - {"label"}
+        )
+
+        if unknown:
+            return {
+                "error": (
+                    f"Search {index} has unknown parameters: "
+                    f"{', '.join(unknown)}"
+                )
+            }
+
+    per_search_limit = max(
+        1,
+        min(int(per_search_limit), HUNT_MAX_PER_SEARCH),
+    )
+
+    return sh.save_hunt(
+        name=name,
+        searches=searches,
+        per_search_limit=per_search_limit,
+    )
+
+
+@mcp.tool()
+def list_hunts() -> dict[str, Any]:
+    """List locally saved hunts."""
+    return {"hunts": sh.list_hunts()}
+
+
+@mcp.tool()
+def run_hunt(name: str) -> dict[str, Any]:
+    """Run a previously saved hunt."""
+    entry = sh.get_hunt(name)
+
+    if entry is None:
+        return {"error": f"No saved hunt named {name!r}."}
+
+    result = hunt(
+        searches=entry["searches"],
+        per_search_limit=entry.get("per_search_limit", 10),
+    )
+
+    if "error" not in result:
+        result["name"] = name
+
+    return result
+
+
+@mcp.tool()
+def check_new_matches(
+    name: str,
+    mark_seen: bool = True,
+) -> dict[str, Any]:
+    """Run a saved hunt and return only listings not seen before."""
+    entry = sh.get_hunt(name)
+
+    if entry is None:
+        return {"error": f"No saved hunt named {name!r}."}
+
+    result = hunt(
+        searches=entry["searches"],
+        per_search_limit=entry.get("per_search_limit", 10),
+    )
+
+    if "error" in result:
+        return result
+
+    candidates = result["candidates"]
+    seen_ids = set(entry.get("seen_ids", []))
+
+    new_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.get("id") not in seen_ids
+    ]
+
+    if mark_seen:
+        sh.record_check(
+            name,
+            [
+                candidate["id"]
+                for candidate in candidates
+                if candidate.get("id")
+            ],
+        )
+
+    return {
+        "name": name,
+        "first_check": entry.get("last_checked_at") is None,
+        "checked_count": len(candidates),
+        "new_count": len(new_candidates),
+        "new_candidates": new_candidates,
+        "hunt_summary": {
+            "search_count": result["search_count"],
+            "successful_searches": result["successful_searches"],
+            "failed_searches": result["failed_searches"],
+            "raw_result_count": result["raw_result_count"],
+            "unique_count": result["unique_count"],
+            "duplicates_removed": result["duplicates_removed"],
+        },
     }
 
 
