@@ -119,6 +119,166 @@ def search_listings(
     return result
 
 
+HUNT_MAX_SEARCHES = 20
+HUNT_MAX_PER_SEARCH = 25
+
+HUNT_ALLOWED_PARAMS = {
+    "site",
+    "query",
+    "category",
+    "subcategory",
+    "zip_code",
+    "distance_km",
+    "price_from",
+    "price_to",
+    "condition",
+    "seller_type",
+    "sort_by",
+    "sort_order",
+    "limit",
+    "offset",
+    "offered_since_days",
+    "attribute_ids",
+}
+
+
+@mcp.tool()
+def hunt(
+    searches: list[dict[str, Any]],
+    per_search_limit: int = 10,
+) -> dict[str, Any]:
+    """Run several complementary Marktplaats searches as one bounded hunt.
+
+    Each search is a dict containing normal search_listings arguments plus an
+    optional human-readable ``label`` used for provenance.
+
+    Example:
+        [
+            {"label": "p100 nearby", "query": "Tesla P100", "price_to": 150},
+            {"label": "cheap workstation", "query": "Dell Precision", "price_to": 120},
+        ]
+
+    Results are deduplicated by Marktplaats listing ID. Every candidate keeps
+    a ``found_by`` list showing which searches independently discovered it.
+
+    Hard limits:
+        - maximum 20 searches per hunt
+        - maximum 25 returned listings per individual search
+    """
+    if not searches:
+        return {"error": "Provide at least one search."}
+
+    if len(searches) > HUNT_MAX_SEARCHES:
+        return {
+            "error": (
+                f"Too many searches: {len(searches)}. "
+                f"Maximum is {HUNT_MAX_SEARCHES}."
+            )
+        }
+
+    per_search_limit = max(1, min(int(per_search_limit), HUNT_MAX_PER_SEARCH))
+
+    candidates_by_id: dict[str, dict[str, Any]] = {}
+    search_summaries: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    raw_result_count = 0
+
+    for index, original in enumerate(searches, start=1):
+        if not isinstance(original, dict):
+            errors.append({
+                "search": index,
+                "error": "Search entry must be an object/dict.",
+            })
+            continue
+
+        params = dict(original)
+        label = str(
+            params.pop("label", "")
+            or params.get("query")
+            or params.get("subcategory")
+            or params.get("category")
+            or f"search-{index}"
+        )
+
+        unknown = sorted(set(params) - HUNT_ALLOWED_PARAMS)
+        if unknown:
+            errors.append({
+                "search": index,
+                "label": label,
+                "error": f"Unknown search parameters: {', '.join(unknown)}",
+            })
+            continue
+
+        requested_limit = params.get("limit", per_search_limit)
+        try:
+            requested_limit = int(requested_limit)
+        except (TypeError, ValueError):
+            requested_limit = per_search_limit
+
+        params["limit"] = max(
+            1,
+            min(requested_limit, per_search_limit, HUNT_MAX_PER_SEARCH),
+        )
+
+        try:
+            result = search_listings(**params)
+        except TypeError as exc:
+            errors.append({
+                "search": index,
+                "label": label,
+                "error": str(exc),
+            })
+            continue
+
+        if "error" in result:
+            errors.append({
+                "search": index,
+                "label": label,
+                "error": result["error"],
+            })
+            continue
+
+        listings = result.get("listings", [])
+        raw_result_count += len(listings)
+
+        search_summaries.append({
+            "label": label,
+            "returned_count": len(listings),
+            "total_count": result.get("total_count", 0),
+        })
+
+        for listing in listings:
+            listing_id = listing.get("id")
+            if not listing_id:
+                continue
+
+            existing = candidates_by_id.get(listing_id)
+
+            if existing is None:
+                candidate = dict(listing)
+                candidate["found_by"] = [label]
+                candidates_by_id[listing_id] = candidate
+            elif label not in existing["found_by"]:
+                existing["found_by"].append(label)
+
+    candidates = list(candidates_by_id.values())
+
+    for candidate in candidates:
+        candidate["found_by_count"] = len(candidate["found_by"])
+
+    return {
+        "search_count": len(searches),
+        "successful_searches": len(search_summaries),
+        "failed_searches": len(errors),
+        "raw_result_count": raw_result_count,
+        "unique_count": len(candidates),
+        "duplicates_removed": raw_result_count - len(candidates),
+        "searches": search_summaries,
+        "candidates": candidates,
+        "errors": errors,
+    }
+
+
 @mcp.tool()
 def get_listing_details(listing_id: str, site: str = "marktplaats") -> dict[str, Any]:
     """Fetch a listing page and return title, price, description, images, stats.
