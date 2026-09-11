@@ -1,6 +1,6 @@
 # Marktplaats MCP
 
-A friendly, agent-oriented MCP server for searching and monitoring [Marktplaats.nl](https://www.marktplaats.nl) (and the inherited 2dehands.be support).
+An agent-oriented MCP server for searching and monitoring [Marktplaats.nl](https://www.marktplaats.nl) (and the inherited 2dehands.be support).
 
 Instead of only exposing a single marketplace search, this version adds **multi-query hunts**: an AI agent can turn one shopping goal into several complementary searches, merge the results, remove duplicates, remember what it has already seen, and later ask for only the genuinely new listings.
 
