@@ -123,10 +123,12 @@ def get_seller_info(seller_id: int, site: str = "marktplaats") -> dict[str, Any]
         )
         response.raise_for_status()
         data = response.json()
+    except ValueError:
+        # requests.JSONDecodeError also inherits RequestException, so handle
+        # malformed JSON before the broader transport-error branch below.
+        return {"error": "Invalid response"}
     except requests.RequestException as exc:
         return {"error": f"Request failed: {exc}"}
-    except ValueError:
-        return {"error": "Invalid response"}
 
     reviews = data.get("reviews") or []
     review_summary = reviews[0] if reviews else {}
