@@ -20,6 +20,13 @@ auth = [
     "playwright>=1.40",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "responses>=0.25",
+]
+
 [project.scripts]
 marktplaats-2dehands-mcp = "marktplaats_2dehands_mcp.server:main"
 

@@ -5,8 +5,8 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform != 'win32'",
     "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'win32'",
     "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and sys_platform == 'win32'",
     "python_full_version < '3.11' and sys_platform != 'win32'",
 ]
 
@@ -741,6 +741,13 @@ test = [
     { name = "responses" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "responses" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.0.0,<2" },
@@ -751,6 +758,13 @@ requires-dist = [
     { name = "responses", marker = "extra == 'test'", specifier = ">=0.25" },
 ]
 provides-extras = ["test", "auth"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "responses", specifier = ">=0.25" },
+]
 
 [[package]]
 name = "mcp"
