@@ -136,6 +136,28 @@ class TestSearch:
         data = api.search("marktplaats", {"query": "x"})
         assert data["totalResultCount"] == 42
 
+    def test_requested_limit_caps_over_returned_listings(
+        self, mocked_responses, search_response_factory, listing_factory
+    ):
+        mocked_responses.add(
+            responses.GET,
+            "https://www.marktplaats.nl/lrp/api/search",
+            json=search_response_factory(
+                listings=[
+                    listing_factory(itemId="m1"),
+                    listing_factory(itemId="m2"),
+                    listing_factory(itemId="m3"),
+                ],
+                total=3,
+            ),
+            status=200,
+        )
+
+        data = api.search("marktplaats", {"query": "gpu", "limit": "1"})
+
+        assert data["totalResultCount"] == 3
+        assert [listing["itemId"] for listing in data["listings"]] == ["m1"]
+
     def test_2dehands_uses_correct_host(self, mocked_responses, search_response_factory):
         mocked_responses.add(
             responses.GET,
