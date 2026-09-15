@@ -99,7 +99,15 @@ def search(site: str, params: dict[str, Any]) -> dict[str, Any]:
             timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+
+        # The marketplace can return extra listings beyond the requested page
+        # size. Keep that transport quirk behind this layer so callers can rely
+        # on ``limit`` as a hard maximum for returned listings.
+        listings = data.get("listings", [])
+        requested_limit = int(params.get("limit", len(listings)))
+        data["listings"] = listings[:requested_limit]
+        return data
     except requests.RequestException as e:
         raise SearchError(f"Request failed: {e}") from e
     except ValueError as e:
